@@ -9,6 +9,14 @@ from mamba_ssm.ops.selective_scan_interface import selective_scan_fn, selective_
 from torchvision.transforms.functional import resize, to_pil_image  # type: ignore
 import numpy as np
 
+# ========================================================
+# 🌟 [新增] 引入 Adaptive Wavelet 核心套件 🌟
+# (請確保下方 import 的檔案名稱與你的小波程式碼檔案一致)
+from util.conv_transform import conv_fwt_2d, conv_ifwt_2d
+from util.learnable_wavelets import ProductFilter
+import pywt
+# ========================================================
+
 
 def to_3d(x):
     return rearrange(x, 'b c h w -> b (h w) c')
@@ -257,6 +265,62 @@ class SS2D(nn.Module):
 
         return out
 
+# ========================================================
+# 🌟 [最新修正版] 完美對接 conv_transform 的小波上下採樣 🌟
+# ========================================================
+class WaveletDown(nn.Module):
+    def __init__(self, in_ch, out_ch, wavelet):
+        super(WaveletDown, self).__init__()
+        self.wavelet = wavelet
+        self.conv = nn.Conv2d(in_ch * 4, out_ch, kernel_size=3, stride=1, padding=1, bias=False)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x_fold = x.view(B * C, 1, H, W)
+        
+        # 1. 明確加上 scales=1，阻止 pywt 報錯
+        # 2. coeffs 會收到格式：[res_ll, (res_lh, res_hl, res_hh)]
+        coeffs = conv_fwt_2d(x_fold, self.wavelet, scales=1)
+        
+        res_ll = coeffs[0]
+        res_lh, res_hl, res_hh = coeffs[1]
+        
+        # 將 4 個頻率子帶在 channel 維度拼接起來，形狀變為 [B*C, 4, H/2, W/2]
+        x_wave = torch.cat([res_ll, res_lh, res_hl, res_hh], dim=1)
+        
+        # 轉回 EVSSM 需要的 Batch 維度，形狀變為 [B, C*4, H/2, W/2]
+        x_wave = x_wave.view(B, C * 4, H // 2, W // 2)
+        
+        return self.conv(x_wave)
+
+
+class WaveletUp(nn.Module):
+    def __init__(self, in_ch, out_ch, wavelet):
+        super(WaveletUp, self).__init__()
+        self.wavelet = wavelet
+        self.conv = nn.Conv2d(in_ch, out_ch * 4, kernel_size=3, stride=1, padding=1, bias=False)
+
+    def forward(self, x):
+        B, C, H, W = x.shape
+        x = self.conv(x)  # 形狀變為: [B, out_ch * 4, H, W]
+        B, C_exp, H, W = x.shape
+        out_ch = C_exp // 4
+        
+        # 轉為給 IDWT 拆解前的格式 [B*out_ch, 4, H, W]
+        x_fold = x.view(B * out_ch, 4, H, W)
+        
+        # 把 4 個通道拆開，以符合 conv_ifwt_2d 預期的 list 格式
+        res_ll, res_lh, res_hl, res_hh = torch.split(x_fold, 1, dim=1)
+        coeffs = [res_ll, (res_lh, res_hl, res_hh)]
+        
+        # 進行逆小波轉換
+        out = conv_ifwt_2d(coeffs, self.wavelet)
+        
+        # 放回原本的 Batch 維度 [B, out_ch, H*2, W*2]
+        out = out.view(B, out_ch, H * 2, W * 2)
+        return out
+# ========================================================
+
 
 ##########################################################################
 class EVS(nn.Module):
@@ -326,7 +390,7 @@ class Upsample(nn.Module):
     def forward(self, x):
         return self.body(x)
 
-
+'''
 ##########################################################################
 ##---------- EVSSM -----------------------
 class EVSSM(nn.Module):
@@ -416,4 +480,108 @@ class EVSSM(nn.Module):
         out_dec_level1 = self.output(out_dec_level1) + inp_img
 
         return out_dec_level1
+'''
 
+# ========================================================
+# 🌟 [修改版] Adaptive Wavelet EVSSM 主類別 🌟
+# ========================================================
+class EVSSM(nn.Module):
+    def __init__(self,
+                 inp_channels=3,
+                 out_channels=3,
+                 dim=48,
+                 num_blocks=[6, 6, 12],
+                 ffn_expansion_factor=3,
+                 bias=False,
+                 # 🌟 [修改] 刪除 wf 和 map_size，改成預設的小波名稱
+                 wave_name='haar' 
+                 ):
+        super(EVSSM, self).__init__()
+
+        self.encoder = True
+        
+        # 🌟 [修改] 透過 pywt 產生 4 組基礎濾波器，再餵給 ProductFilter
+        w = pywt.Wavelet(wave_name)
+        # 🌟 [修改] 將 Python List 轉換為 PyTorch Tensor，並確保型態為 float32
+        dec_lo = torch.tensor(w.dec_lo, dtype=torch.float32)
+        dec_hi = torch.tensor(w.dec_hi, dtype=torch.float32)
+        rec_lo = torch.tensor(w.rec_lo, dtype=torch.float32)
+        rec_hi = torch.tensor(w.rec_hi, dtype=torch.float32)
+        self.wavelet = ProductFilter(dec_lo, dec_hi, rec_lo, rec_hi)
+        # ===============================================
+
+        self.patch_embed = OverlapPatchEmbed(inp_channels, dim)
+        
+
+        self.encoder_level1 = nn.Sequential()
+        for i in range(num_blocks[0]):
+            block = EVS(dim=dim, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=384)
+            self.encoder_level1.add_module(f"block{i}", block)
+
+        # 改用小波下採樣
+        self.down1_2 = WaveletDown(in_ch=dim, out_ch=dim * 2, wavelet=self.wavelet)
+        
+        self.encoder_level2 = nn.Sequential()
+        for i in range(num_blocks[1]):
+            block = EVS(dim=dim * 2, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=192)
+            self.encoder_level2.add_module(f"block{i}", block)
+
+        # 改用小波下採樣
+        self.down2_3 = WaveletDown(in_ch=int(dim * 2), out_ch=int(dim * 4), wavelet=self.wavelet)
+
+        self.encoder_level3 = nn.Sequential()
+        for i in range(num_blocks[2]):
+            block = EVS(dim=dim * 4, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=96)
+            self.encoder_level3.add_module(f"block{i}", block)
+
+        self.decoder_level3 = nn.Sequential()
+        for i in range(num_blocks[2]):
+            block = EVS(dim=dim * 4, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=96)
+            self.decoder_level3.add_module(f"block{i}", block)
+
+        # 改用小波上採樣
+        self.up3_2 = WaveletUp(in_ch=int(dim * 4), out_ch=int(dim * 2), wavelet=self.wavelet)
+
+        self.decoder_level2 = nn.Sequential()
+        for i in range(num_blocks[1]):
+            block = EVS(dim=dim * 2, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=192)
+            self.decoder_level2.add_module(f"block{i}", block)
+
+        # 改用小波上採樣
+        self.up2_1 = WaveletUp(in_ch=int(dim * 2), out_ch=dim, wavelet=self.wavelet)
+
+        self.decoder_level1 = nn.Sequential()
+        for i in range(num_blocks[0]):
+            block = EVS(dim=dim, ffn_expansion_factor=ffn_expansion_factor, bias=bias, att=True, idx=i, patch=384)
+            self.decoder_level1.add_module(f"block{i}", block)
+
+        self.output = nn.Conv2d(int(dim), out_channels, kernel_size=3, stride=1, padding=1, bias=bias)
+
+    # forward 函數與原版完全一致，不需要動
+    def forward(self, inp_img):
+        inp_enc_level1 = self.patch_embed(inp_img)
+        out_enc_level1 = self.encoder_level1(inp_enc_level1)
+
+        inp_enc_level2 = self.down1_2(out_enc_level1)
+        out_enc_level2 = self.encoder_level2(inp_enc_level2)
+
+        inp_enc_level3 = self.down2_3(out_enc_level2)
+        out_enc_level3 = self.encoder_level3(inp_enc_level3)
+
+        out_dec_level3 = self.decoder_level3(out_enc_level3)
+
+        inp_dec_level2 = self.up3_2(out_dec_level3)
+        inp_dec_level2 = inp_dec_level2 + out_enc_level2
+        out_dec_level2 = self.decoder_level2(inp_dec_level2)
+
+        inp_dec_level1 = self.up2_1(out_dec_level2)
+        inp_dec_level1 = inp_dec_level1 + out_enc_level1
+        out_dec_level1 = self.decoder_level1(inp_dec_level1)
+
+        out_dec_level1 = self.output(out_dec_level1) + inp_img
+
+        return out_dec_level1
+    
+    # 👇 新增這段：取得小波濾波器的正則化誤差
+    def get_wavelet_loss(self):
+        return self.wavelet.wavelet_loss()

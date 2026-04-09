@@ -1,15 +1,15 @@
-name: EVSSM
+name: EVSSM_Wavelet_GoPro
 model_type: ImageRestorationModel
 scale: 1
-num_gpu: 4
+num_gpu: 1
 manual_seed: 42
 
 datasets:
   train:
     name: gopro-train
     type: PairedImageDataset
-    dataroot_gt: /data0/konglingshun/dataset/GoPro/train/sharp_crops.lmdb
-    dataroot_lq: /data0/konglingshun/dataset/GoPro/train/blur_crops.lmdb
+    dataroot_gt: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/train_lmdb/sharp_crops.lmdb
+    dataroot_lq: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/train_lmdb/blur_crops.lmdb
 
     filename_tmpl: '{}'
     io_backend:
@@ -29,8 +29,8 @@ datasets:
   val:
     name: gopro-test
     type: PairedImageDataset
-    dataroot_gt: /data0/konglingshun/dataset/GoPro/test/sharp_crops.lmdb
-    dataroot_lq: /data0/konglingshun/dataset/GoPro/test/blur_crops.lmdb
+    dataroot_gt: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/sharp_crops.lmdb
+    dataroot_lq: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/blur_crops.lmdb
     io_backend:
       type: lmdb
 
@@ -43,6 +43,8 @@ network_g:
   num_blocks: [6,6,12]
   ffn_expansion_factor: 3
   bias: False
+  wave_name: haar  # 🌟 新增：明確指定小波名稱
+
 
 
 # path
@@ -80,7 +82,7 @@ train:
 
 # validation settings
 val:
-  val_freq: !!float 1e3
+  val_freq: !!float 1e4
   save_img: false
 
 
@@ -97,10 +99,10 @@ val:
 # logging settings
 logger:
   print_freq: 100
-  save_checkpoint_freq: !!float 3e3
+  save_checkpoint_freq: !!float 1e4
   use_tb_logger: true
   wandb:
-    project: ~
+    project: EVSSM-Wavelet
     resume_id: ~
 
 # dist training settings

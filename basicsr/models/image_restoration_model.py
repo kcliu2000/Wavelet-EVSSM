@@ -270,6 +270,18 @@ class ImageRestorationModel(BaseModel):
 
         l_total = l_total/2
 
+
+        # 👇 🌟 新增小波約束 (Wavelet Regularization Loss) 🌟
+        if hasattr(self.net_g, 'module'):
+            wvl_loss = self.net_g.module.get_wavelet_loss()
+        else:
+            wvl_loss = self.net_g.get_wavelet_loss()
+            
+        l_wvl = 0.1 * wvl_loss  # 依照你 MIMO-UNet 的設定乘上 0.1
+        l_total += l_wvl
+        loss_dict['l_wvl'] = l_wvl
+        # 👆 🌟 新增結束 🌟
+
         l_total.backward()
 ######################################################
 
@@ -413,7 +425,14 @@ class ImageRestorationModel(BaseModel):
             keys.append(name)
             metrics.append(value)
         metrics = torch.stack(metrics, 0)
-        torch.distributed.reduce(metrics, dst=0)
+
+        # 👇 🌟 加入 if 判斷，如果是分散式訓練才執行 reduce 🌟
+        if self.opt.get('dist', False):
+            torch.distributed.reduce(metrics, dst=0)
+        # 👆 🌟 修改結束 🌟
+
+        #torch.distributed.reduce(metrics, dst=0)
+
         if self.opt['rank'] == 0:
             metrics_dict = {}
             cnt = 0
