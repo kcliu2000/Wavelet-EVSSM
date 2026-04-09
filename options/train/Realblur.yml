@@ -1,4 +1,4 @@
-name: EVSSM_Wavelet_RealBlur-J
+name: EVSSM_Original_RealBlur-J
 model_type: ImageRestorationModel
 scale: 1
 num_gpu: 1
@@ -44,7 +44,6 @@ network_g:
   #num_refinement_blocks: 4
   ffn_expansion_factor: 3
   bias: False
-  wave_name: haar  # 🌟 新增：明確指定小波名稱
 
 
 # path

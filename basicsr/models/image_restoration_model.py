@@ -271,17 +271,6 @@ class ImageRestorationModel(BaseModel):
         l_total = l_total/2
 
 
-        # 👇 🌟 新增小波約束 (Wavelet Regularization Loss) 🌟
-        if hasattr(self.net_g, 'module'):
-            wvl_loss = self.net_g.module.get_wavelet_loss()
-        else:
-            wvl_loss = self.net_g.get_wavelet_loss()
-            
-        l_wvl = 0.1 * wvl_loss  # 依照你 MIMO-UNet 的設定乘上 0.1
-        l_total += l_wvl
-        loss_dict['l_wvl'] = l_wvl
-        # 👆 🌟 新增結束 🌟
-
         l_total.backward()
 ######################################################
 

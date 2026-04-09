@@ -1,4 +1,4 @@
-name: EVSSM_Wavelet_GoPro
+name: EVSSM_Original_GoPro
 model_type: ImageRestorationModel
 scale: 1
 num_gpu: 1
@@ -43,7 +43,6 @@ network_g:
   num_blocks: [6,6,12]
   ffn_expansion_factor: 3
   bias: False
-  wave_name: haar  # 🌟 新增：明確指定小波名稱
 
 
 
