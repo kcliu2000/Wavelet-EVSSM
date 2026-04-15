@@ -1,0 +1,138 @@
+# ---------------------------------------------------------
+# EVSSM 知識蒸餾版 (Knowledge Distillation) 設定檔
+# 目標：將 48 Blocks 的 Teacher 蒸餾給 24 Blocks 的 Student
+# ---------------------------------------------------------
+
+name: EVSSM_Distill_GoPro
+model_type: EVSSMDistillationModel   # 👈 關鍵修改：使用我們新寫的蒸餾流程
+scale: 1
+num_gpu: 1
+manual_seed: 42
+
+datasets:
+  train:
+    name: gopro-train
+    type: PairedImageDataset
+    dataroot_gt: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/train_lmdb/sharp_crops.lmdb
+    dataroot_lq: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/train_lmdb/blur_crops.lmdb
+
+    filename_tmpl: '{}'
+    io_backend:
+      type: lmdb
+
+    gt_size: 128
+    use_flip: true
+    use_rot: true
+
+    # data loader
+    use_shuffle: true
+    num_worker_per_gpu: 8
+    batch_size_per_gpu: 8
+    dataset_enlarge_ratio: 1
+    prefetch_mode: ~
+
+  val:
+    name: gopro-test
+    type: PairedImageDataset
+    dataroot_gt: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/sharp_crops.lmdb
+    dataroot_lq: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/blur_crops.lmdb
+    io_backend:
+      type: lmdb
+
+
+# -----------------------------------
+# 學生模型 (Student Model - 運算量減半)
+# -----------------------------------
+network_g:
+  type: EVSSM
+  inp_channels: 3
+  out_channels: 3
+  dim: 48
+  num_blocks: [3, 3, 6]   # 👈 關鍵剪枝：從 [6,6,12] 砍成 [3,3,6]
+  ffn_expansion_factor: 3
+  bias: False
+
+# -----------------------------------
+# 老師模型 (Teacher Model - 原版強大基準)
+# -----------------------------------
+network_teacher:
+  type: EVSSM
+  inp_channels: 3
+  out_channels: 3
+  dim: 48
+  num_blocks: [6, 6, 12]  # 👈 維持原本的深度，作為高品質解答的提供者
+  ffn_expansion_factor: 3
+  bias: False
+
+
+# -----------------------------------
+# 路徑與權重載入
+# -----------------------------------
+path:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: ~
+  pretrain_network_teacher: '/home/m11302124/EVSSM-Baseline/pretrained_model/net_g_GoPro.pth'
+
+
+# -----------------------------------
+# 訓練設定
+# -----------------------------------
+train:
+  kd_weight: 0.5   # 👈 新增的蒸餾 Loss 權重，設定 0.5 讓學生努力模仿
+
+  optim_g:
+    type: AdamW
+    lr: !!float 1e-3
+    weight_decay: !!float 1e-3
+    betas: [0.9, 0.9]
+
+  scheduler:
+    type: TrueCosineAnnealingLR
+    T_max: 300000
+    eta_min: !!float 1e-7
+
+  total_iter: 300000
+  warmup_iter: -1 # no warm up
+
+  # losses
+  pixel_opt:
+    type: L1Loss
+    loss_weight: 1.0
+    reduction: mean
+
+  fft_opt:
+    type: FFTLoss
+    loss_weight: 0.1
+    reduction: mean
+
+
+# -----------------------------------
+# 驗證與 Logging 設定
+# -----------------------------------
+val:
+  val_freq: !!float 1e4
+  save_img: false
+
+  metrics:
+    psnr: # metric name, can be arbitrary
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
+
+logger:
+  print_freq: 200
+  save_checkpoint_freq: !!float 1e4
+  use_tb_logger: true
+  wandb:
+    project: "EVSSM_Distill_Project"
+    resume_id: ~
+
+# dist training settings
+dist_params:
+  backend: nccl
+  port: 29500
