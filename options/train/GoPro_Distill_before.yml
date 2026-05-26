@@ -1,10 +1,9 @@
-
-  # ---------------------------------------------------------
+# ---------------------------------------------------------
 # EVSSM 知識蒸餾版 (Knowledge Distillation) 設定檔
 # 目標：將 48 Blocks 的 Teacher 蒸餾給 24 Blocks 的 Student
 # ---------------------------------------------------------
 
-name: EVSSM_Distill_Wavelet_Feature_GoPro_v2
+name: EVSSM_Distill_GoPro
 model_type: EVSSMDistillationModel   # 👈 關鍵修改：使用我們新寫的蒸餾流程
 scale: 1
 num_gpu: 1
@@ -31,9 +30,6 @@ datasets:
     batch_size_per_gpu: 8
     dataset_enlarge_ratio: 1
     prefetch_mode: ~
-
-    
-
 
   val:
     name: gopro-test
@@ -75,7 +71,7 @@ network_teacher:
 path:
   pretrain_network_g: ~
   strict_load_g: true
-  resume_state: ~
+  resume_state: /home/m11302124/EVSSM-Baseline/experiments/EVSSM_Distill_GoPro/training_states/130000.state
   pretrain_network_teacher: '/home/m11302124/EVSSM-Baseline/pretrained_model/net_g_GoPro.pth'
 
 
@@ -110,16 +106,6 @@ train:
     loss_weight: 0.1
     reduction: mean
 
-  # 🟢 實驗組 C 的開關 (下一輪的小波保底實驗)
-  use_wavelet_kd: true     # 下週要跑實驗 C 時，把它改成 true
-  wavelet_kd_weight: 0.5
-  
-  # 🔴 實驗組 D 的開關 (未來的終極雙重蒸餾實驗)
-  use_feature_kd: true     # 未來要跑實驗 D 時，把它改成 true
-  feat_kd_weight: 0.001
-  target_layers_teacher: ['encoder_level1', 'encoder_level2', 'encoder_level3']
-  target_layers_student: ['encoder_level1', 'encoder_level2', 'encoder_level3']
-
 
 # -----------------------------------
 # 驗證與 Logging 設定
@@ -144,7 +130,7 @@ logger:
   use_tb_logger: true
   wandb:
     project: "EVSSM_Distill_Project"
-    resume_id: ~
+    resume_id: 5mvdvaw2
 
 # dist training settings
 dist_params:

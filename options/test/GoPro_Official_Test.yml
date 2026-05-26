@@ -1,0 +1,41 @@
+name: EVSSM_Official_GoPro_Test
+model_type: ImageRestorationModel
+scale: 1
+num_gpu: 1
+manual_seed: 42
+
+datasets:
+  test_1:  # BasicSR 測試階段習慣用 test_1, test_2 命名
+    name: gopro-test
+    type: PairedImageDataset
+    dataroot_gt: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test/sharp
+    dataroot_lq: /home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test/blur
+    io_backend:
+      type: disk
+    phase: test
+    scale: 1
+
+network_g:
+  type: EVSSM
+  inp_channels: 3
+  out_channels: 3
+  dim: 48
+  num_blocks: [6, 6, 12]  # 官方 Teacher 的完整深度
+  ffn_expansion_factor: 3
+  bias: False
+
+path:
+  pretrain_network_g: /home/m11302124/EVSSM-Baseline/pretrained_model/net_g_GoPro.pth
+  strict_load_g: true
+
+val:
+  save_img: false  # 設為 false 可以省硬碟空間並加快測試速度
+  metrics:
+    psnr:
+      type: calculate_psnr
+      crop_border: 0
+      test_y_channel: false
+    ssim:
+      type: calculate_ssim
+      crop_border: 0
+      test_y_channel: false
