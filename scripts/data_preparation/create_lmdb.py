@@ -154,6 +154,33 @@ def prepare_keys_vimeo90k(folder_path, train_list_path, mode):
 
     return img_path_list, keys
 
+def create_lmdb_for_gopro():
+    """Create lmdb files for GoPro dataset."""
+    
+    # 🌟 1. 這裡請改成您「清晰原圖 (Sharp/Target)」的資料夾路徑
+    folder_path_sharp = '/home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test/sharp' # <--- 記得確認這包叫什麼
+    lmdb_path_sharp = '/home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/sharp.lmdb'
+    print(f'Processing {folder_path_sharp} ...')
+    img_path_list_sharp, keys_sharp = prepare_keys_gopro(folder_path_sharp)
+    make_lmdb_from_imgs(folder_path_sharp, lmdb_path_sharp, img_path_list_sharp, keys_sharp, multiprocessing_read=True)
+
+    # 🌟 2. 這裡請改成您截圖裡的 test/blur 資料夾路徑
+    folder_path_blur = '/home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test/blur'  # <--- 修改這裡！
+    lmdb_path_blur = '/home/m11302124/MIMO-UNet-Wavelet/dataset/GOPRO/test_lmdb/blur.lmdb'
+    print(f'Processing {folder_path_blur} ...')
+    img_path_list_blur, keys_blur = prepare_keys_gopro(folder_path_blur)
+    make_lmdb_from_imgs(folder_path_blur, lmdb_path_blur, img_path_list_blur, keys_blur, multiprocessing_read=True)
+    
+    # 👇 就是這個函數漏掉了！請確保它緊接在上面那個函數的下方
+def prepare_keys_gopro(folder_path):
+    """Prepare image path list and keys for GoPro dataset."""
+    from basicsr.utils import scandir # 確保有載入工具
+    print('Reading image path list ...')
+    img_path_list = sorted(list(scandir(folder_path, suffix='png', recursive=True)))
+    keys = [v.split('.png')[0] for v in img_path_list]  
+    
+    return img_path_list, keys
+
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
@@ -169,6 +196,8 @@ if __name__ == '__main__':
     elif dataset == 'reds':
         create_lmdb_for_reds()
     elif dataset == 'vimeo90k':
-        create_lmdb_for_vimeo90k()
+        create_lmdb_for_vimeo9
+    elif dataset == 'gopro':           # 🌟 確保有加上這行 (必須全小寫)
+        create_lmdb_for_gopro()        # 🌟 確保有加上這行
     else:
         raise ValueError('Wrong dataset.')

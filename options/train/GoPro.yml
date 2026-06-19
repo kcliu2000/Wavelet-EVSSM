@@ -49,9 +49,9 @@ network_g:
 
 # path
 path:
-  pretrain_network_g:
-  strict_load_g:
-  resume_state:
+  pretrain_network_g: ~
+  strict_load_g: true
+  resume_state: /home/m11302124/EVSSM/experiments/EVSSM_Wavelet_GoPro/training_states/100000.state
 
 # training settings
 train:
@@ -103,7 +103,7 @@ logger:
   use_tb_logger: true
   wandb:
     project: EVSSM-Wavelet
-    resume_id: ~
+    resume_id: a5of1m3b
 
 # dist training settings
 dist_params:

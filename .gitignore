@@ -38,6 +38,7 @@ train_gopro.log
 *.pth
 *.state
 *.pkl
+logs/
 
 # IDE 雜物
 .vscode/
