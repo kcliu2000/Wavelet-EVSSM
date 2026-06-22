@@ -64,7 +64,16 @@ def main(args):
     if not os.path.exists(args.result_dir):
         os.makedirs(args.result_dir)
 
-    model = EVSSM()
+    
+    model = EVSSM(
+    inp_channels=3,
+    out_channels=3,
+    dim=48,
+    num_blocks=[3, 3, 6],
+    ffn_expansion_factor=3,
+    bias=False,
+    )
+
     # print(model)
     if torch.cuda.is_available():
         model.cuda()
