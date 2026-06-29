@@ -42,3 +42,5 @@ train_gopro.log
 # IDE 雜物
 .vscode/
 .idea/
+
+logs/
