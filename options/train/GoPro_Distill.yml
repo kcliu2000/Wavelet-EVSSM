@@ -115,7 +115,7 @@ train:
   wavelet_kd_weight: 0.5
   
   # 🔴 實驗組 D 的開關 (未來的終極雙重蒸餾實驗)
-  use_feature_kd: true     # 未來要跑實驗 D 時，把它改成 true
+  use_feature_kd: false     # 未來要跑實驗 D 時，把它改成 true
   feat_kd_weight: 0.001
   target_layers_teacher: ['encoder_level1', 'encoder_level2', 'encoder_level3']
   target_layers_student: ['encoder_level1', 'encoder_level2', 'encoder_level3']
